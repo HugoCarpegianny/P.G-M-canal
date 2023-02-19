@@ -1,0 +1,33 @@
+var
+
+  candle : integer;
+
+  chave  : integer;
+
+begin
+
+  if (BuyPosition = 0) then // função para saber se está posicionado em compra ou não
+
+    begin
+
+      candle := - 1;
+
+      if (close > media(200,close)) and (RSI(4,0) < 25) then
+
+        BuyAtMarket; // função para enviar ordem de compra
+
+    end;
+
+  if (BuyPosition = 1) then
+
+    begin
+
+      candle := candle + 1;
+
+      if (RSI(4,0) > 55) then
+
+        ClosePosition; // função para fechar posições
+
+    end;
+
+end;
