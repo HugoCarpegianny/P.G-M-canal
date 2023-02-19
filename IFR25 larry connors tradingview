@@ -1,0 +1,29 @@
+//@version=5
+
+strategy('RSI25_strategy', overlay=true, process_orders_on_close=true)
+
+
+
+acima_da_media = close[0] > ta.sma(close, 200)
+
+sinal_de_compra = ta.rsi(close, 4) < 25
+
+sinal_de_saida = ta.rsi(close, 4) > 55
+
+if strategy.position_size == 0 // função para determinar se há posição aberta
+
+    if sinal_de_compra and acima_da_media
+
+        strategy.entry('ENTRADA', strategy.long) // função para enviar ordens
+
+if strategy.position_size > 0
+
+    if sinal_de_saida
+
+        strategy.order('SAÍDA', strategy.short) // cancelamento da ordem de compra
+
+
+plot(ta.sma(close, 200))
+
+
+plot(ta.rsi(close,4))
