@@ -1,0 +1,167 @@
+//+------------------------------------------------------------------+
+//|                                          Robo youtube Neting.mq5 |
+//|                             Copyright 2023, programandonomercado |
+//|                                 https://programandonomercado.com |
+//+------------------------------------------------------------------+
+#property copyright "Programando no Mercado"
+#property link      "www.programandonomercado.com"
+#property version   "1.00"
+//+------------------------------------------------------------------+
+//|INCLUDES                                                          |
+//+------------------------------------------------------------------+
+#include <Trade/Trade.mqh>
+
+//+------------------------------------------------------------------+
+//|INPUT                                                             |
+//+------------------------------------------------------------------+
+input int lote = 100;
+input int mediarapida = 10;
+input int medialonga = 50;
+//+------------------------------------------------------------------+
+//|GLOBALS                                                           |
+//+------------------------------------------------------------------+
+// --- mainipuladores de indicadores
+int mediarapida_handle = INVALID_HANDLE;
+int medialonga_handle = INVALID_HANDLE;
+// --- vetores de dados dos indicadores 
+double mediarapida_buffer[];
+double medialonga_buffer[];
+// ----
+CTrade trade;
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+//---
+
+ArraySetAsSeries(medialonga_buffer,true);
+ArraySetAsSeries(mediarapida_buffer,true);
+
+// atribuir valores para mainipulador da média
+
+   mediarapida_handle = iMA(_Symbol,_Period,mediarapida,0,MODE_SMA,PRICE_CLOSE);
+   medialonga_handle = iMA(_Symbol,_Period,medialonga,0,MODE_SMA,PRICE_CLOSE);
+   
+//---
+   return(INIT_SUCCEEDED);
+  }
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+  {
+//---
+   
+  }
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+  {
+//---
+   if(isNewBar())
+     {
+      //+------------------------------------------------------------------+
+      //| OBTENÇÃO DOS DADOS                                               |
+      //+------------------------------------------------------------------+
+ int copied1 = CopyBuffer(mediarapida_handle,0,0,5,mediarapida_buffer);
+ int copied2 = CopyBuffer(medialonga_handle,0,0,5,medialonga_buffer);
+ // se os dados tiverem sido copiados corretamente
+ 
+ bool sinalCompra = false;
+ bool sinalVenda = false;
+  if(copied1 == 5 && copied2 == 5)
+    {
+     // sinal de compra
+     if(mediarapida_buffer[1]>medialonga_buffer[1] && mediarapida_buffer[2]<medialonga_buffer[2])
+       {
+        sinalCompra = true;
+       }
+     
+     // sinal de venda
+    if(mediarapida_buffer[1]<medialonga_buffer[1] && mediarapida_buffer[2]>medialonga_buffer[2])
+       {
+        sinalVenda = true;
+       }
+     
+    }
+      
+      
+      //+------------------------------------------------------------------+
+      //|VERIFICAR SE ESTOU POSICIONADO                                    |
+      //+------------------------------------------------------------------+
+      bool comprado = false;
+      bool vendido = false;
+      
+      if(PositionSelect(_Symbol))
+        {
+          if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
+            {
+             comprado = true;
+            }
+        
+          if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
+            {
+             vendido = true;
+            }
+        
+      }
+      
+    //+------------------------------------------------------------------+
+    //| LÓGICA DE ROTEAMENTO                                             |
+    //+------------------------------------------------------------------+
+    // ZERAOD
+    if(!comprado && !vendido)
+      {
+      // sinal de compra
+       if(sinalCompra)
+         {
+          trade.Buy(lote,_Symbol,0,0,0,"Compra a Mercado");
+         }
+      // sinal de venda
+      if(sinalVenda)
+        {
+         trade.Sell(lote,_Symbol,0,0,0,"Venda a Mercado");
+        }
+      }
+    else
+      {
+       // -- estou comprado
+       if(comprado)
+         {
+          if(sinalVenda)
+            {
+             trade.Sell(lote*2,_Symbol,0,0,0,"Virada de mão venda");
+            }
+         }
+        // -- estou vendido
+       else if(vendido)
+              {
+               if(sinalCompra)
+                 {
+                  trade.Buy(lote*2,_Symbol,0,0,0,"Virada de mão compra");
+                 }
+              }    
+       
+          }    
+      }
+   
+  }
+//+------------------------------------------------------------------+
+bool isNewBar()
+  {
+   static datetime last_time=0;
+   datetime lastbar_time=(datetime)SeriesInfoInteger(Symbol(),Period(),SERIES_LASTBAR_DATE);
+   if(last_time==0)
+     {
+      last_time=lastbar_time;
+      return(false);
+     }
+   if(last_time!=lastbar_time)
+     {
+      last_time=lastbar_time;
+      return(true);
+     }
+   return(false);
+  }
