@@ -1,0 +1,311 @@
+//+------------------------------------------------------------------+
+//|                                          Robo youtube Neting.mq5 |
+//|                             Copyright 2023, programandonomercado |
+//|                                 https://programandonomercado.com |
+//+------------------------------------------------------------------+
+#property copyright "Programando no Mercado"
+#property link      "www.programandonomercado.com"
+#property version   "1.00"
+//+------------------------------------------------------------------+
+//|INCLUDES                                                          |
+//+------------------------------------------------------------------+
+#include <Trade/Trade.mqh>
+#include <Trade/OrderInfo.mqh>
+
+//+------------------------------------------------------------------+
+//|INPUT                                                             |
+//+------------------------------------------------------------------+
+input int lote = 1;  // VOLUME FINANCEIRO
+input int mediarapida = 20;            // PERÍODO DA MÉDIA
+input ENUM_TIMEFRAMES cancelamento = PERIOD_CURRENT;  // QUAL PERÍODO VOCÊ DESEJA OPERAR?
+
+//+------------------------------------------------------------------+
+//|GLOBALS                                                           |
+//+------------------------------------------------------------------+
+// --- mainipuladores de indicadores
+int media_handle = INVALID_HANDLE;
+
+// --- vetores de dados dos indicadores 
+double media_buffer[];
+
+// ----
+CTrade trade;
+COrderInfo   myorder;
+
+// ----
+
+MqlRates candle[];
+
+MqlTick tick;
+
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+//---
+
+
+ArraySetAsSeries(media_buffer,true);
+
+ArraySetAsSeries(candle,true);
+
+// atribuir valores para mainipulador da média
+
+   media_handle = iMA(_Symbol,_Period,mediarapida,0,MODE_SMA,PRICE_CLOSE);
+
+   
+//---
+   return(INIT_SUCCEEDED);
+  }
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+  {
+//---
+   
+  }
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+  {
+//---
+      bool comprado = false;
+      bool vendido = false;
+      
+   if(isNewBar())
+     {
+      //+------------------------------------------------------------------+
+      //| OBTENÇÃO DOS DADOS                                               |
+      //+------------------------------------------------------------------+
+       int copied1 = CopyBuffer(media_handle,0,0,5,media_buffer);
+       int copied2 = CopyRates(_Symbol,_Period,0,5,candle);
+       
+    
+      if(!SymbolInfoTick(_Symbol,tick))
+        {
+         Print("ERRO -> Dados de ticks não foram copiados corretamente");
+        
+        }
+
+
+ // se os dados tiverem sido copiados corretamente
+ 
+ bool sinalCompra = false;
+ bool sinalVenda = false;
+  if(copied1 == 5 && copied2 == 5)
+    {
+     // sinal de compra
+   if(candle[1].low < candle[2].low && candle[2].low < candle[3].low && candle[0].low > media_buffer[1] )
+     {
+      sinalCompra = true;
+     }
+// lógica do SINAL VENDA -> fechar abaixo da em21
+   if(candle[1].high > candle[2].high && candle[2].high > candle[3].high && candle[0].high < media_buffer[1] )
+     {
+      sinalVenda = true;
+     }
+     
+    }
+      
+      
+      //+------------------------------------------------------------------+
+      //|VERIFICAR SE ESTOU POSICIONADO                                    |
+      //+------------------------------------------------------------------+
+     
+      
+      if(PositionSelect(_Symbol))
+        {
+          if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
+            {
+             comprado = true;
+            }
+        
+          if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
+            {
+             vendido = true;
+            }
+        
+      }
+      
+    //+------------------------------------------------------------------+
+    //| LÓGICA DE ROTEAMENTO                                             |
+    //+------------------------------------------------------------------+
+    // ZERADO
+    if(!comprado && !vendido)
+      {
+      
+      
+
+      // sinal de compra
+       if(sinalCompra)
+         {
+            double sl = GetSL(true);
+            double tp = GetTP(true);
+            double ativa = candle[1].high;
+            double gatilho = candle[1].high;
+
+            bool ok = trade.OrderOpen(_Symbol,ORDER_TYPE_BUY_STOP_LIMIT,lote,gatilho,ativa,sl,tp,ORDER_TIME_GTC,0,"COMPRA LIMITE");
+           
+            if(ok)
+              {
+               if(trade.ResultRetcode()==10008 || trade.ResultRetcode()==10009)
+                 {
+                  Print("ORDEM LIMITE DE COMPRA ENVIADA EM DAVE LANDRY");
+                 }
+               else
+                 {
+                  Print("ERRO - > Retorno inesperado do servidor");
+                
+                 }
+              }
+            else
+              {
+               Print("ERRO - > ERRO AO ENVIAR ORDEM DE COMPRA LIMITE EM DAVE LANDRY");
+              }
+           }
+       
+       if(isNewBar2() && !comprado && OrderSelect(OrderGetTicket(0)))
+        {
+         cancelarordem();
+         Print("ORDEM DE COMPRA CANCELADA");
+        }
+      // sinal de venda
+      if(sinalVenda)
+        {
+            double sl = GetSL(false);
+            double tp = GetTP(false);
+            double ativa = candle[1].low;
+            double gatilho = candle[1].low;
+
+            bool ok = trade.OrderOpen(_Symbol,ORDER_TYPE_SELL_STOP_LIMIT,lote,gatilho,ativa,sl,tp,ORDER_TIME_GTC,0,"COMPRA LIMITE");
+           
+            if(ok)
+              {
+               if(trade.ResultRetcode()==10008 || trade.ResultRetcode()==10009)
+                 {
+                  Print("ORDEM LIMITE DE VENDA ENVIADA EM DAVE LANDRY");
+                 }
+               else
+                 {
+                  Print("ERRO - > Retorno inesperado do servidor");
+                 }
+              }
+            else
+              {
+               Print("ERRO - > ERRO AO ENVIAR ORDEM DE VENDA LIMITE EM DAVE LANDRY");             
+              }
+           }
+    if(!vendido && OrderSelect(OrderGetTicket(0)) && isNewBar2())
+        {
+         cancelarordem();
+         Print("ORDEM DE VENDA CANCELADA");
+        } 
+        
+       }   
+    }  
+    
+  }
+//+------------------------------------------------------------------+
+bool isNewBar()
+  {
+   static datetime last_time=0;
+   datetime lastbar_time=(datetime)SeriesInfoInteger(Symbol(),Period(),SERIES_LASTBAR_DATE);
+   if(last_time==0)
+     {
+      last_time=lastbar_time;
+      return(false);
+     }
+   if(last_time!=lastbar_time)
+     {
+      last_time=lastbar_time;
+      return(true);
+     }
+   return(false);
+  }
+  
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+bool isNewBar2()
+  {
+   static datetime last_time=0;
+   datetime lastbar_time=(datetime)SeriesInfoInteger(Symbol(),cancelamento,SERIES_LASTBAR_DATE);
+   if(last_time==0)
+     {
+      last_time=lastbar_time;
+      return(false);
+     }
+   if(last_time!=lastbar_time)
+     {
+      last_time=lastbar_time;
+      return(true);
+     }
+   return(false);
+  }
+  
+  
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+double GetSL(bool isBuy)
+  {
+   double sl = 0;
+//
+      double tickSize = SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
+      if(isBuy)
+        {
+         sl = candle[1].low;
+        }
+      else
+        {
+         sl = candle[1].high;
+        }
+   
+ 
+//
+   return(sl);
+  }
+
+//
+double GetTP(bool isBuy)
+  {
+   double tp = 0;
+   
+   //
+
+         double tickSize = SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
+         if(isBuy)
+           {
+            tp = tick.ask + (candle[1].high - candle[1].low)*2;
+           }
+         else
+           {
+            tp = tick.bid - (candle[1].high - candle[1].low)*2;
+           }
+//
+   return(tp);
+  }
+  
+  //+------------------------------------------------------------------+
+  //|                                                                  |
+  //+------------------------------------------------------------------+
+  
+  
+void cancelarordem()
+  {
+   for(int i=OrdersTotal(); i>=0; i--)
+     {
+      if(myorder.Select(OrderGetTicket(i)))
+        {
+          if(!trade.OrderDelete(OrderGetTicket(i)))
+              {
+               Print("ERRO AO FECHAR TODAS AS ORDENS");
+              }
+           }
+        }
+     }
+  
